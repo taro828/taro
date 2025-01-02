@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小朋友下樓梯遊戲</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+            background: #87CEEB; /* 天空藍 */
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <script>
+        // 獲取 canvas
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        // 設置畫布大小
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // 遊戲變量
+        const fallSpeed = 2; // 固定下降速度
+        const playerSpeed = 3; // 玩家水平速度
+        const stepWidth = 100; // 階梯寬度
+        const stepHeight = 20; // 階梯高度
+        const steps = []; // 階梯數據
+        let gameOver = false; // 遊戲結束標誌
+
+        // 階梯生成
+        const generateSteps = () => {
+            for (let i = 0; i < 20; i++) {
+                steps.push({
+                    x: Math.random() * (canvas.width - stepWidth),
+                    y: i * 100,
+                    width: stepWidth,
+                    height: stepHeight,
+                });
+            }
+        };
+
+        // 玩家角色
+        const player = {
+            x: canvas.width / 2 - 25,
+            y: 0,
+            width: 50,
+            height: 50,
+            dx: 0,
+        };
+
+        // 繪製玩家
+        const drawPlayer = () => {
+            ctx.fillStyle = "red";
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+        };
+
+        // 繪製階梯
+        const drawSteps = () => {
+            ctx.fillStyle = "brown";
+            steps.forEach(step => {
+                ctx.fillRect(step.x, step.y, step.width, step.height);
+            });
+        };
+
+        // 更新玩家位置
+        const updatePlayer = () => {
+            player.y += fallSpeed;
+            player.x += player.dx;
+
+            // 邊界檢查
+            if (player.x < 0) player.x = 0;
+            if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+
+            // 掉出畫面檢測
+            if (player.y > canvas.height) {
+                gameOver = true;
+            }
+        };
+
+        // 檢測階梯碰撞
+        const checkCollision = () => {
+            steps.forEach(step => {
+                if (
+                    player.x < step.x + step.width &&
+                    player.x + player.width > step.x &&
+                    player.y + player.height > step.y &&
+                    player.y + player.height < step.y + step.height
+                ) {
+                    player.y = step.y - player.height; // 停止在階梯上
+                }
+            });
+        };
+
+        // 處理按鍵
+        const handleKeyDown = (e) => {
+            if (e.key === "ArrowLeft") {
+                player.dx = -playerSpeed;
+            } else if (e.key === "ArrowRight") {
+                player.dx = playerSpeed;
+            }
+        };
+
+        const handleKeyUp = (e) => {
+            if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                player.dx = 0;
+            }
+        };
+
+        // 繪製遊戲結束畫面
+        const drawGameOver = () => {
+            ctx.fillStyle = "black";
+            ctx.font = "48px Arial";
+            ctx.textAlign = "center";
+            ctx.fillText("遊戲結束", canvas.width / 2, canvas.height / 2);
+        };
+
+        // 遊戲主迴圈
+        const gameLoop = () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (!gameOver) {
+                drawSteps();
+                drawPlayer();
+                updatePlayer();
+                checkCollision();
+                requestAnimationFrame(gameLoop);
+            } else {
+                drawGameOver();
+            }
+        };
+
+        // 初始化遊戲
+        generateSteps();
+        document.addEventListener("keydown", handleKeyDown);
+        document.addEventListener("keyup", handleKeyUp);
+        gameLoop();
+    </script>
+</body>
+</html>

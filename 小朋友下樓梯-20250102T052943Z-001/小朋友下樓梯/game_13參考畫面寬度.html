@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小朋友下樓梯遊戲</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #ADD8E6; /* 淡藍背景 */
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+        #gameContainer {
+            position: relative;
+            width: 360px;
+            height: 640px;
+            background: #87CEEB; /* 天藍色 */
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+        canvas {
+            display: block;
+        }
+        #gameOverText {
+            display: none;
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 24px;
+            color: black;
+        }
+        #restartBtn {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 16px;
+            background-color: #f44336;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            padding: 10px 20px;
+        }
+        #restartBtn:hover {
+            background-color: #d32f2f;
+        }
+        #score {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 16px;
+            color: black;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="360" height="640"></canvas>
+        <div id="gameOverText">遊戲結束</div>
+        <button id="restartBtn">重新遊戲</button>
+        <div id="score">存活時間: 0 秒</div>
+    </div>
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const restartBtn = document.getElementById("restartBtn");
+        const gameOverText = document.getElementById("gameOverText");
+        const scoreDisplay = document.getElementById("score");
+
+        const canvasWidth = 360;
+        const canvasHeight = 640;
+
+        const playerSpeed = 3;
+        const fallSpeed = 2;
+        const stepWidth = 80;
+        const stepHeight = 15;
+        const stepMoveSpeed = 2;
+        const spikeHeight = 15;
+
+        const steps = [];
+        const spikes = [];
+        let gameOver = false;
+        let gameStarted = false;
+        let score = 0;
+        let scoreTimer;
+
+        const player = {
+            x: canvasWidth / 2 - 20,
+            y: 0,
+            width: 40,
+            height: 40,
+            dx: 0,
+        };
+
+        const generateSteps = (count) => {
+            steps.length = 0;
+            for (let i = 0; i < count; i++) {
+                const x = Math.random() * (canvasWidth - stepWidth);
+                const isSpikeStep = Math.random() > 0.8;
+                steps.push({
+                    x,
+                    y: i * 80,
+                    width: stepWidth,
+                    height: stepHeight,
+                    isSpike: isSpikeStep,
+                });
+            }
+        };
+
+        const drawPlayer = () => {
+            ctx.fillStyle = "pink";
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+        };
+
+        const drawSteps = () => {
+            steps.forEach(step => {
+                ctx.fillStyle = step.isSpike ? "darkgray" : "saddlebrown";
+                ctx.fillRect(step.x, step.y, step.width, step.height);
+            });
+        };
+
+        const updatePlayer = () => {
+            player.y += fallSpeed;
+            player.x += player.dx;
+
+            if (player.x < 0) player.x = 0;
+            if (player.x + player.width > canvasWidth) player.x = canvasWidth - player.width;
+
+            if (player.y > canvasHeight) endGame();
+        };
+
+        const updateSteps = () => {
+            steps.forEach((step, index) => {
+                step.y -= stepMoveSpeed;
+                if (step.y + step.height < 0) {
+                    steps.splice(index, 1);
+                    steps.push({
+                        x: Math.random() * (canvasWidth - stepWidth),
+                        y: canvasHeight,
+                        width: stepWidth,
+                        height: stepHeight,
+                        isSpike: Math.random() > 0.8,
+                    });
+                }
+            });
+        };
+
+        const checkCollision = () => {
+            steps.forEach(step => {
+                if (
+                    player.x < step.x + step.width &&
+                    player.x + player.width > step.x &&
+                    player.y + player.height > step.y &&
+                    player.y + player.height < step.y + step.height
+                ) {
+                    if (!gameStarted) gameStarted = true;
+                    player.y = step.y - player.height;
+
+                    if (step.isSpike) endGame();
+                }
+            });
+        };
+
+        const startScoreTimer = () => {
+            scoreTimer = setInterval(() => {
+                if (!gameOver) {
+                    score++;
+                    scoreDisplay.innerText = `存活時間: ${score} 秒`;
+                }
+            }, 1000);
+        };
+
+        const endGame = () => {
+            gameOver = true;
+            clearInterval(scoreTimer);
+            gameOverText.style.display = "block";
+            restartBtn.style.display = "block";
+        };
+
+        const restartGame = () => {
+            gameOver = false;
+            gameStarted = false;
+            player.y = 0;
+            player.x = canvasWidth / 2 - 20;
+            steps.length = 0;
+            score = 0;
+            gameOverText.style.display = "none";
+            restartBtn.style.display = "none";
+            scoreDisplay.innerText = "存活時間: 0 秒";
+            generateSteps(10);
+            startScoreTimer();
+            gameLoop();
+        };
+
+        restartBtn.addEventListener("click", restartGame);
+
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "ArrowLeft") player.dx = -playerSpeed;
+            if (e.key === "ArrowRight") player.dx = playerSpeed;
+        });
+
+        document.addEventListener("keyup", () => {
+            player.dx = 0;
+        });
+
+        const gameLoop = () => {
+            if (!gameOver) {
+                ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+                drawSteps();
+                drawPlayer();
+                updateSteps();
+                updatePlayer();
+                checkCollision();
+                requestAnimationFrame(gameLoop);
+            }
+        };
+
+        generateSteps(10);
+        startScoreTimer();
+        gameLoop();
+    </script>
+</body>
+</html>

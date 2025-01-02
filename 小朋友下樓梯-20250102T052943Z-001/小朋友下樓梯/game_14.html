@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小朋友下樓梯遊戲</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #ADD8E6; /* 淡藍背景 */
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+        #gameContainer {
+            position: relative;
+            width: 360px;
+            height: 640px;
+            background: #87CEEB; /* 天藍色 */
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+        canvas {
+            display: block;
+            background:#ADD8E6; /* 改成淡藍色 */
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+        #startScreen, #gameOverScreen {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+        #startScreen.active, #gameOverScreen.active {
+            display: flex;
+        }
+        #startScreen button, #gameOverScreen button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 18px;
+            background: #f44336;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        #score {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 20px;
+            color: black;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="360" height="640"></canvas>
+        <div id="startScreen" class="active">
+            <h1>下樓梯大冒險</h1>
+            <p>操作方式：使用左右方向鍵控制角色，避免碰到尖刺或掉落畫面。</p>
+            <button id="startBtn">Game Start</button>
+        </div>
+        <div id="gameOverScreen">
+            <h2>遊戲結束</h2>
+            <p id="finalScore"></p>
+            <p id="highScore"></p>
+            <button id="restartBtn">重新遊戲</button>
+        </div>
+        <div id="score">存活時間: 0 秒</div>
+    </div>
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const startScreen = document.getElementById("startScreen");
+        const gameOverScreen = document.getElementById("gameOverScreen");
+        const startBtn = document.getElementById("startBtn");
+        const restartBtn = document.getElementById("restartBtn");
+        const finalScore = document.getElementById("finalScore");
+        const highScoreDisplay = document.getElementById("highScore");
+        const scoreDisplay = document.getElementById("score");
+        const clouds = []; // 雲朵的陣列
+
+
+        const playerSpeed = 3;
+        const fallSpeed = 2;
+        const stepWidth = 80;
+        const stepHeight = 15;
+        const stepMoveSpeed = 2;
+        const spikeHeight = 15;
+
+        const canvasWidth = canvas.width;
+        const canvasHeight = canvas.height;
+        const steps = [];
+        const spikes = [];
+        let gameOver = false;
+        let gameStarted = false; // 確保遊戲尚未開始前場景靜止
+        let score = 0;
+        let scoreTimer;
+        let highScore = localStorage.getItem("highScore") || 0;
+
+        const player = {
+            x: canvas.width / 2 - 20,
+            y: 0,
+            width: 40,
+            height: 40,
+            dx: 0,
+        };
+// 初始化雲朵
+const generateClouds = (count) => {
+    for (let i = 0; i < count; i++) {
+        clouds.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height / 2, // 雲朵出現在上半部
+            width: Math.random() * 100 + 50, // 隨機寬度
+            height: Math.random() * 30 + 20, // 隨機高度
+            dx: Math.random() * 0.5 + 0.1 // 雲朵的水平移動速度
+        });
+    }
+};
+
+// 繪製雲朵
+const drawClouds = () => {
+    clouds.forEach(cloud => {
+        ctx.fillStyle = "white";
+        ctx.beginPath();
+        ctx.ellipse(cloud.x, cloud.y, cloud.width / 2, cloud.height / 2, 0, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.fill();
+    });
+};
+
+// 更新雲朵位置
+const updateClouds = () => {
+        if (!gameStarted) return; // 如果遊戲尚未開始，停止更新
+    clouds.forEach(cloud => {
+        cloud.x += cloud.dx; // 雲朵向右移動
+        if (cloud.x - cloud.width > canvas.width) {
+            cloud.x = -cloud.width; // 雲朵離開畫面時從左邊重新出現
+        }
+    });
+};
+        // 普通階梯和帶尖刺的階梯生成
+        const generateSteps = (count) => {
+            steps.length = 0;
+
+            // 保證每次生成階梯時至少在左、中、右三個區域有一個階梯
+            const stepPositions = [
+                Math.random() * (canvas.width / 3 - stepWidth) + 0,
+                Math.random() * (canvas.width / 3) + canvas.width / 3,
+                Math.random() * (canvas.width / 3 - stepWidth) + 2 * (canvas.width / 3),
+            ];
+
+            for (let i = 0; i < count; i++) {
+                const x = Math.random() * (canvasWidth - stepWidth);
+                const isSpikeStep = Math.random() > 0.8; // 20% 機會生成帶尖刺的階梯
+                steps.push({
+                    x: x,
+                    y: i * 80,
+                    width: stepWidth,
+                    height: stepHeight,
+                    isSpike: isSpikeStep,
+                });
+            }
+        };
+
+        const generateSpikes = (count) => {
+            spikes.length = 0;
+
+            // 頂部尖刺生成
+            for (let i = 0; i < count; i++) {
+                spikes.push({
+                    x: Math.random() * canvas.width,
+                    y: i * 100,
+                    width: 20,
+                    height: spikeHeight,
+                });
+            }
+        };
+
+        const drawPlayer = () => {
+    // 玩家身體
+    ctx.fillStyle = "pink";
+    ctx.fillRect(player.x, player.y, player.width, player.height);
+
+    // 玩家臉
+    ctx.beginPath();
+    ctx.arc(player.x + player.width / 2, player.y + player.height / 2, 20, 0, Math.PI * 2);
+    ctx.fillStyle = "yellow";
+    ctx.fill();
+    ctx.closePath();
+
+    // 笑臉
+    ctx.beginPath();
+    ctx.arc(player.x + player.width / 2, player.y + player.height / 2 + 5, 10, 0, Math.PI, false); // 微笑
+    ctx.stroke();
+
+    // 眼睛
+    ctx.beginPath();
+    ctx.arc(player.x + player.width / 2 - 7, player.y + player.height / 2 - 5, 3, 0, Math.PI * 2); // 左眼
+    ctx.fillStyle = "black";
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(player.x + player.width / 2 + 7, player.y + player.height / 2 - 5, 3, 0, Math.PI * 2); // 右眼
+    ctx.fillStyle = "black";
+    ctx.fill();
+};
+
+const drawSteps = () => {
+    steps.forEach(step => {
+        // 判斷階梯類型
+        if (step.isSpike) {
+            // **尖刺階梯**
+            ctx.fillStyle = "darkgray"; // 尖刺階梯的底色
+            ctx.fillRect(step.x, step.y, step.width, step.height);
+
+            // 繪製尖刺
+            ctx.fillStyle = "gray";
+            for (let i = 0; i < 5; i++) {
+                ctx.beginPath();
+                ctx.moveTo(step.x + i * (step.width / 5), step.y); // 左下
+                ctx.lineTo(step.x + (i + 1) * (step.width / 5), step.y); // 右下
+                ctx.lineTo(step.x + (i + 0.5) * (step.width / 5), step.y - 15); // 尖頂
+                ctx.closePath();
+                ctx.fill();
+            }
+        } else {
+            // **普通階梯**
+            ctx.fillStyle = "saddlebrown"; // 普通階梯的底色
+            ctx.fillRect(step.x, step.y, step.width, step.height);
+
+            // 繪製木紋效果
+            ctx.strokeStyle = "black";
+            ctx.beginPath();
+            ctx.moveTo(step.x + 5, step.y + 5);
+            ctx.lineTo(step.x + step.width - 5, step.y + 5); // 木紋線1
+            ctx.moveTo(step.x + 10, step.y + 10);
+            ctx.lineTo(step.x + step.width - 10, step.y + 10); // 木紋線2
+            ctx.stroke();
+        }
+    });
+};
+
+
+const drawSpikes = () => {
+    const spikeWidth = canvas.width / 20;
+    ctx.fillStyle = "silver";
+    for (let i = 0; i < 20; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * spikeWidth, 0);
+        ctx.lineTo((i + 1) * spikeWidth, 0);
+        ctx.lineTo(i * spikeWidth + spikeWidth / 2, spikeHeight);
+        ctx.closePath();
+        ctx.fill();
+        
+        // 增加金屬邊框
+        ctx.strokeStyle = "black";
+        ctx.stroke();
+    }
+};
+
+
+        const updatePlayer = () => {
+            player.y += fallSpeed;
+            player.x += player.dx;
+
+            if (player.x < 0) player.x = 0;
+            if (player.x + player.width > canvas.width) player.x = canvasWidth - player.width;
+
+            // 遊戲開始後判斷尖刺碰撞
+            if (gameStarted && player.y < spikeHeight) {
+                endGame();
+            }
+
+            // 掉出畫面
+            if (player.y > canvasHeight) {
+                endGame();
+            }
+        };
+
+        const updateSteps = () => {
+            if (!gameStarted) return; // 如果遊戲尚未開始，停止更新
+            steps.forEach((step, index) => {
+                step.y -= stepMoveSpeed;
+
+                if (step.y + step.height < 0) {
+                    steps.splice(index, 1);
+
+                    // 最少保留5個階梯
+                    if (steps.length >= 5) {
+                        const isSpikeStep = Math.random() > 0.8; // 隨機生成帶尖刺的階梯
+                        steps.push({
+                            x: Math.random() * (canvasWidth - stepWidth),
+                            y: canvasHeight,
+                            width: stepWidth,
+                            height: stepHeight,
+                            isSpike: isSpikeStep,
+                        });
+                    }
+                }
+            });
+        };
+
+        const updateSpikes = () => {
+            spikes.forEach((spike, index) => {
+                spike.y -= stepMoveSpeed;
+
+                if (spike.y + spike.height < 0) {
+                    spikes.splice(index, 1);
+                }
+            });
+        };
+
+        const checkCollision = () => {
+            steps.forEach(step => {
+                if (
+                    player.x < step.x + step.width &&
+                    player.x + player.width > step.x &&
+                    player.y + player.height > step.y &&
+                    player.y + player.height < step.y + step.height
+                ) {
+                    // 如果尚未開始，碰到階梯後正式開始
+                    if (!gameStarted) {
+                        gameStarted = true;
+                    }
+                    player.y = step.y - player.height;
+
+                    // 如果是帶尖刺的階梯，直接遊戲結束
+                    if (step.isSpike) {
+                        endGame();
+                    }
+                }
+            });
+
+            spikes.forEach(spike => {
+                if (
+                    player.x < spike.x + spike.width &&
+                    player.x + player.width > spike.x &&
+                    player.y + player.height > spike.y &&
+                    player.y + player.height < spike.y + spike.height
+                ) {
+                    endGame();
+                }
+            });
+        };
+
+        const startScoreTimer = () => {
+            scoreDisplay.textContent = "存活時間: 0 秒";
+            scoreTimer = setInterval(() => {
+                if (!gameOver) {
+                    score++;
+                    scoreDisplay.textContent = `存活時間: ${score} 秒`;
+                }
+            }, 1000);
+        };
+        const startGame = () => {
+            startScreen.classList.remove("active");
+            gameOverScreen.classList.remove("active");
+            score = 0;
+            gameOver = false;
+            gameStarted = true; // 遊戲開始後設定為 true
+            player.x = canvasWidth / 2 - 20;
+            player.y = canvasHeight - 60;
+            steps.length = 0;
+            spikes.length = 0;
+            generateSteps(8);
+            generateSpikes(1);
+            generateClouds(5); // 初始化雲朵
+            startScoreTimer();
+            gameLoop();
+        };
+        const endGame = () => {
+            gameOver = true;
+            clearInterval(scoreTimer);
+            finalScore.textContent = `本次得分：${score} 秒`;
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem("highScore", highScore);
+            }
+            highScoreDisplay.textContent = `最高分數：${highScore} 秒`;
+            gameOverScreen.classList.add("active");
+        };
+
+
+        const restartGame = () => {
+            startGame();
+        };
+
+
+        startBtn.addEventListener("click", startGame);
+        restartBtn.addEventListener("click", restartGame);
+
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "ArrowLeft") player.dx = -playerSpeed;
+            if (e.key === "ArrowRight") player.dx = playerSpeed;
+        });
+
+        document.addEventListener("keyup", () => {
+            player.dx = 0;
+        });
+
+        const gameLoop = () => {
+        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+        drawClouds();
+        drawSteps();
+        drawSpikes();
+        drawPlayer();
+
+        if (gameStarted) {
+            updateClouds();
+            updateSteps();
+            updatePlayer();
+            checkCollision();
+        }
+
+        if (!gameOver) {
+            requestAnimationFrame(gameLoop);
+        }
+};
+
+
+    </script>
+</body>
+</html>

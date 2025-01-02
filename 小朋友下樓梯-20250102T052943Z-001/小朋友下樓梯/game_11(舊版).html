@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小朋友下樓梯遊戲</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+            background: #87CEEB; /* 天空藍 */
+        }
+        #gameOverText {
+            display: none;
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 32px;
+            color: black;
+        }
+        #restartBtn {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 10px 20px;
+            font-size: 18px;
+            background-color: #f44336;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #restartBtn:hover {
+            background-color: #d32f2f;
+        }
+        #score {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 20px;
+            color: black;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="gameOverText">遊戲結束</div>
+    <button id="restartBtn">重新遊戲</button>
+    <div id="score">存活時間: 0 秒</div>
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const restartBtn = document.getElementById("restartBtn");
+        const gameOverText = document.getElementById("gameOverText");
+        const scoreDisplay = document.getElementById("score");
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const playerSpeed = 3;
+        const fallSpeed = 2;
+        const stepWidth = 100;
+        const stepHeight = 20;
+        const stepMoveSpeed = 2;
+        const spikeHeight = 20;
+
+        const steps = [];
+        const spikes = [];
+        let gameOver = false;
+        let gameStarted = false;
+        let score = 0;
+        let scoreTimer;
+
+        const player = {
+            x: canvas.width / 2 - 25,
+            y: 0,
+            width: 50,
+            height: 50,
+            dx: 0,
+        };
+
+        // 普通階梯和帶尖刺的階梯生成
+        const generateSteps = (count) => {
+            steps.length = 0;
+
+            // 保證每次生成階梯時至少在左、中、右三個區域有一個階梯
+            const stepPositions = [
+                Math.random() * (canvas.width / 3 - stepWidth) + 0,
+                Math.random() * (canvas.width / 3) + canvas.width / 3,
+                Math.random() * (canvas.width / 3 - stepWidth) + 2 * (canvas.width / 3),
+            ];
+
+            for (let i = 0; i < count; i++) {
+                const x = stepPositions[i % 3];
+                const isSpikeStep = Math.random() > 0.8; // 20% 機會生成帶尖刺的階梯
+                steps.push({
+                    x: x,
+                    y: i * 100,
+                    width: stepWidth,
+                    height: stepHeight,
+                    isSpike: isSpikeStep,
+                });
+            }
+        };
+
+        const generateSpikes = (count) => {
+            spikes.length = 0;
+
+            // 頂部尖刺生成
+            for (let i = 0; i < count; i++) {
+                spikes.push({
+                    x: Math.random() * canvas.width,
+                    y: i * 100,
+                    width: 20,
+                    height: spikeHeight,
+                });
+            }
+        };
+
+        const drawPlayer = () => {
+            ctx.fillStyle = "red";
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+        };
+
+        const drawSteps = () => {
+            steps.forEach(step => {
+                if (step.isSpike) {
+                    ctx.fillStyle = "purple"; // 帶尖刺的階梯
+                    // 在紫色階梯上加上尖刺
+                    ctx.beginPath();
+                    ctx.moveTo(step.x + step.width / 2 - 5, step.y - 5);
+                    ctx.lineTo(step.x + step.width / 2 + 5, step.y - 5);
+                    ctx.lineTo(step.x + step.width / 2, step.y - 15);
+                    ctx.closePath();
+                    ctx.fill();
+                } else {
+                    ctx.fillStyle = "brown"; // 普通階梯
+                }
+                ctx.fillRect(step.x, step.y, step.width, step.height);
+
+                // 如果是紫色尖刺階梯，畫出尖刺
+                if (step.isSpike) {
+                    for (let i = 0; i < 5; i++) {
+                        ctx.beginPath();
+                        ctx.moveTo(step.x + i * (step.width / 5), step.y - 5);
+                        ctx.lineTo(step.x + (i + 1) * (step.width / 5), step.y - 5);
+                        ctx.lineTo(step.x + (i + 0.5) * (step.width / 5), step.y - 15);
+                        ctx.closePath();
+                        ctx.fill();
+                    }
+                }
+            });
+        };
+
+        const drawSpikes = () => {
+            ctx.fillStyle = "black";
+            spikes.forEach(spike => {
+                ctx.beginPath();
+                ctx.moveTo(spike.x, spike.y);
+                ctx.lineTo(spike.x + spike.width, spike.y);
+                ctx.lineTo(spike.x + spike.width / 2, spike.y - spike.height);
+                ctx.closePath();
+                ctx.fill();
+            });
+        };
+
+        const updatePlayer = () => {
+            player.y += fallSpeed;
+            player.x += player.dx;
+
+            if (player.x < 0) player.x = 0;
+            if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+
+            // 遊戲開始後判斷尖刺碰撞
+            if (gameStarted && player.y < spikeHeight) {
+                endGame();
+            }
+
+            // 掉出畫面
+            if (player.y > canvas.height) {
+                endGame();
+            }
+        };
+
+        const updateSteps = () => {
+            steps.forEach((step, index) => {
+                step.y -= stepMoveSpeed;
+
+                if (step.y + step.height < 0) {
+                    steps.splice(index, 1);
+
+                    // 最少保留5個階梯
+                    if (steps.length >= 5) {
+                        const isSpikeStep = Math.random() > 0.8; // 隨機生成帶尖刺的階梯
+                        steps.push({
+                            x: Math.random() * (canvas.width - stepWidth),
+                            y: canvas.height,
+                            width: stepWidth,
+                            height: stepHeight,
+                            isSpike: isSpikeStep,
+                        });
+                    }
+                }
+            });
+        };
+
+        const updateSpikes = () => {
+            spikes.forEach((spike, index) => {
+                spike.y -= stepMoveSpeed;
+
+                if (spike.y + spike.height < 0) {
+                    spikes.splice(index, 1);
+                }
+            });
+        };
+
+        const checkCollision = () => {
+            steps.forEach(step => {
+                if (
+                    player.x < step.x + step.width &&
+                    player.x + player.width > step.x &&
+                    player.y + player.height > step.y &&
+                    player.y + player.height < step.y + step.height
+                ) {
+                    // 如果尚未開始，碰到階梯後正式開始
+                    if (!gameStarted) {
+                        gameStarted = true;
+                    }
+                    player.y = step.y - player.height;
+
+                    // 如果是帶尖刺的階梯，直接遊戲結束
+                    if (step.isSpike) {
+                        endGame();
+                    }
+                }
+            });
+
+            spikes.forEach(spike => {
+                if (
+                    player.x < spike.x + spike.width &&
+                    player.x + player.width > spike.x &&
+                    player.y + player.height > spike.y &&
+                    player.y + player.height < spike.y + spike.height
+                ) {
+                    endGame();
+                }
+            });
+        };
+
+        const startScoreTimer = () => {
+            scoreTimer = setInterval(() => {
+                if (!gameOver) {
+                    score++;
+                    scoreDisplay.innerText = `存活時間: ${score} 秒`;
+                }
+            }, 1000);
+        };
+
+        const endGame = () => {
+            gameOver = true;
+            clearInterval(scoreTimer);
+            gameOverText.style.display = "block";
+            restartBtn.style.display = "block";
+        };
+
+        const restartGame = () => {
+            gameOver = false;
+            gameStarted = false;
+            player.y = 0;
+            player.x = canvas.width / 2 - 25;
+            steps.length = 0;
+            spikes.length = 0;
+            score = 0;
+            gameOverText.style.display = "none";
+            restartBtn.style.display = "none";
+            scoreDisplay.innerText = "存活時間: 0 秒";
+            generateSteps(10);
+            generateSpikes(1);
+            startScoreTimer();
+            gameLoop();
+        };
+
+        restartBtn.addEventListener("click", restartGame);
+
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "ArrowLeft") player.dx = -playerSpeed;
+            if (e.key === "ArrowRight") player.dx = playerSpeed;
+        });
+
+        document.addEventListener("keyup", () => {
+            player.dx = 0;
+        });
+
+        const gameLoop = () => {
+            if (!gameOver) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                drawSpikes();
+                drawSteps();
+                drawPlayer();
+                updateSpikes();
+                updateSteps();
+                updatePlayer();
+                checkCollision();
+                requestAnimationFrame(gameLoop);
+            }
+        };
+
+        generateSteps(10); // 初始化生成階梯
+        generateSpikes(1); // 初始化生成頂部尖刺
+        startScoreTimer();
+        gameLoop();
+    </script>
+</body>
+</html>
